@@ -14,6 +14,7 @@ class TrainConfig:
     num_epochs: int = 1000
     sparsity: float = 0.9
     learning_rate: float = 1e-3
+    weight_decay: float = 0.01
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def generate_sparse_data(batch_size, input_dim, sparsity, device):
@@ -24,7 +25,9 @@ def generate_sparse_data(batch_size, input_dim, sparsity, device):
 
 def train_model(config: TrainConfig, silent=False):
     model = Model(config.input_dim, config.hidden_dim).to(config.device)
-    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+    optimizer = optim.AdamW(model.parameters(), 
+                           lr=config.learning_rate, 
+                           weight_decay=config.weight_decay)
     criterion = nn.MSELoss()
 
     for epoch in range(config.num_epochs):
@@ -41,31 +44,41 @@ def train_model(config: TrainConfig, silent=False):
             print(f'Epoch [{epoch+1}/{config.num_epochs}], Loss: {loss.item():.4f}, LR: {current_lr:.6f}')
     return model, loss.item()
 
-def train_models_with_sparsities(sparsities: List[float], base_config: TrainConfig = None) -> List[Tuple[float, Model, float]]:
+def train_models_with_sparsities(sparsities: List[float], base_config: TrainConfig = None) -> Tuple[List[float], List[Model], List[float]]:
     if base_config is None:
         base_config = TrainConfig()
     
-    results = []
+    trained_sparsities = []
+    trained_models = []
+    final_losses = []
+    
     for sparsity in sparsities:
         config = copy.copy(base_config)
         config.sparsity = sparsity
 
         model, final_loss = train_model(config, silent=True)
+        model.to('cpu')
 
-        results.append((sparsity, model, final_loss))
+        trained_sparsities.append(sparsity)
+        trained_models.append(model)
+        final_losses.append(final_loss)
+        
         print(f"Completed training for sparsity {sparsity:.2f}, final loss: {final_loss:.6f}")
-    return results
+    return trained_sparsities, trained_models, final_losses
 
 if __name__ == "__main__":
     # Example usage with multiple sparsity levels
     sparsities = [0.5, 0.7, 0.9, 0.95, 0.99]
-    base_config = TrainConfig(num_epochs=500)  # Reduced epochs for example
+    base_config = TrainConfig(
+        num_epochs=500,
+        weight_decay=0.01
+    )
     
     print(f"Using device: {base_config.device}")
-    results = train_models_with_sparsities(sparsities, base_config)
+    sparsities, models, losses = train_models_with_sparsities(sparsities, base_config)
     
     # Print summary of results
     print("\nTraining Results Summary:")
-    for sparsity, _, loss in results:
+    for sparsity, loss in zip(sparsities, losses):
         print(f"Sparsity: {sparsity:.2f}, Final Loss: {loss:.6f}")
     

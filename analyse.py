@@ -4,13 +4,18 @@ import plotly.graph_objects as go
 from train import train_models_with_sparsities, TrainConfig, Model, generate_sparse_data #, eval_loss_per_feature
 import numpy as np
 import torch.nn.functional as F
+from dataclasses import replace
 
 # %%
 sparsities = [0.7, 0.9, 0.95, 0.99, 0.995]
+cfg = TrainConfig(
+    num_epochs=20000,
+    # input_dim=4096, # default is 2048
+)
 # sparsities = [0.9, 0.99]
 sparsities, models, losses = train_models_with_sparsities(
     sparsities,
-    base_config=TrainConfig(num_epochs=20000)
+    base_config=cfg,
 )
 
 # %%
@@ -83,8 +88,11 @@ def plot_feature_losses(models, sparsities):
     fig = go.Figure()
 
     for sparsity, model in zip(sparsities, models):
-        # Calculate loss per feature
-        feature_losses = eval_loss_per_feature(model, config=TrainConfig())
+        # Update the config to have the correct sparsity
+        config = replace(cfg, sparsity=sparsity)
+        
+        # Calculate loss per feature using the updated config
+        feature_losses = eval_loss_per_feature(model, config=config)
         
         # Get feature norms and their indices
         ft_norms = torch.norm(model.W, dim=1)
@@ -98,11 +106,14 @@ def plot_feature_losses(models, sparsities):
             name=f'Sparsity {sparsity}',
             mode='lines'
         ))
-    
+
     fig.update_layout(
         title='Feature Losses (sorted by feature norm)',
         xaxis_title='Feature Index (sorted by decreasing norm)',
         yaxis_title='Loss per Feature',
+        yaxis=dict(
+            type='log'  # Set y-axis to logarithmic scale
+        )
     )
     return fig
 

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from model import Model
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -8,13 +9,14 @@ import copy
 
 @dataclass
 class TrainConfig:
-    input_dim: int = 1024
+    input_dim: int = 2048
     hidden_dim: int = 32
-    batch_size: int = 4096
-    num_epochs: int = 1000
+    batch_size: int = 8192
+    num_epochs: int = 10000
     sparsity: float = 0.9
-    learning_rate: float = 1e-3
+    learning_rate: float = 2e-3
     weight_decay: float = 0.01
+    min_lr: float = 1e-6  # Minimum learning rate for cosine decay
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def generate_sparse_data(batch_size, input_dim, sparsity, device):
@@ -28,6 +30,9 @@ def train_model(config: TrainConfig, silent=False):
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config.learning_rate, 
                            weight_decay=config.weight_decay)
+    scheduler = CosineAnnealingLR(optimizer, 
+                                 T_max=config.num_epochs,
+                                 eta_min=config.min_lr)
     criterion = nn.MSELoss()
 
     for epoch in range(config.num_epochs):
@@ -38,6 +43,7 @@ def train_model(config: TrainConfig, silent=False):
         loss = criterion(output, x)
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if not silent and (epoch + 1) % 100 == 0:
             current_lr = optimizer.param_groups[0]['lr']

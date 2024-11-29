@@ -5,7 +5,13 @@ import torch.nn.functional as F
 class Model(nn.Module):
     def __init__(self, input_dim=256, hidden_dim=64):
         super().__init__()
-        self.W = nn.Parameter(torch.randn(input_dim, hidden_dim) / (input_dim ** 0.5)) # Xavier
+        W = torch.empty(input_dim, hidden_dim)
+        # nn.init.kaiming_uniform_(W, mode='fan_in', nonlinearity='relu')
+        nn.init.xavier_uniform_(W)
+
+        W /= W.norm(dim=1, keepdim=True) # Normalise rows
+
+        self.W = nn.Parameter(W)
         self.b = nn.Parameter(torch.zeros(input_dim))
         
     def forward(self, x, return_h=False):
@@ -15,3 +21,9 @@ class Model(nn.Module):
         if return_h:
             return out, h
         return out
+
+
+if __name__ == "__main__":
+    model = Model(1024, 32)
+    print(model.W.shape)
+    print(model.W.norm(dim=1))

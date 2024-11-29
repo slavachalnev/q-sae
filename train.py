@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from model import Model
@@ -49,6 +50,8 @@ def train_model(config: TrainConfig, silent=False):
             current_lr = optimizer.param_groups[0]['lr']
             print(f'Epoch [{epoch+1}/{config.num_epochs}], Loss: {loss.item():.4f}, LR: {current_lr:.6f}')
     return model, loss.item()
+
+
 
 def train_models_with_sparsities(sparsities: List[float], base_config: TrainConfig = None) -> Tuple[List[float], List[Model], List[float]]:
     if base_config is None:

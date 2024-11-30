@@ -52,6 +52,28 @@ def train_model(config: TrainConfig, silent=False):
     return model, loss.item()
 
 
+@torch.no_grad()
+def eval_loss_per_feature(model: Model, config: TrainConfig, num_batches: int = 100) -> torch.Tensor:
+    original_device = model.W.device
+    model.to(config.device)
+    
+    # Initialize accumulator for losses
+    total_loss = torch.zeros(config.input_dim, device=config.device)
+    
+    # Evaluate over multiple batches
+    for _ in range(num_batches):
+        x = generate_sparse_data(config.batch_size, config.input_dim, config.sparsity, config.device)
+        output = model(x)
+        loss = ((output - x) ** 2).mean(dim=0)
+        total_loss += loss
+    
+    # Calculate average loss across batches
+    avg_loss = total_loss / num_batches
+    
+    model.to(original_device)
+    return avg_loss.to(original_device)
+
+
 
 def train_models_with_sparsities(sparsities: List[float], base_config: TrainConfig = None) -> Tuple[List[float], List[Model], List[float]]:
     if base_config is None:

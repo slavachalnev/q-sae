@@ -1,7 +1,7 @@
 # %%
 import torch
 import plotly.graph_objects as go
-from train import train_models_with_sparsities, TrainConfig, Model, generate_sparse_data #, eval_loss_per_feature
+from train import train_models_with_sparsities, TrainConfig, Model, eval_loss_per_feature
 import numpy as np
 import torch.nn.functional as F
 from dataclasses import replace
@@ -63,42 +63,17 @@ def plot_dims_per_ft(models, sparsities):
     )
     return fig
 
-@torch.no_grad()
-def eval_loss_per_feature(model: Model, config: TrainConfig, num_batches: int = 100) -> torch.Tensor:
-    original_device = model.W.device
-    model.to(config.device)
-    
-    # Initialize accumulator for losses
-    total_loss = torch.zeros(config.input_dim, device=config.device)
-    
-    # Evaluate over multiple batches
-    for _ in range(num_batches):
-        x = generate_sparse_data(config.batch_size, config.input_dim, config.sparsity, config.device)
-        output = model(x)
-        loss = ((output - x) ** 2).mean(dim=0)
-        total_loss += loss
-    
-    # Calculate average loss across batches
-    avg_loss = total_loss / num_batches
-    
-    model.to(original_device)
-    return avg_loss.to(original_device)
 
 def plot_feature_losses(models, sparsities):
     fig = go.Figure()
 
     for sparsity, model in zip(sparsities, models):
-        # Update the config to have the correct sparsity
         config = replace(cfg, sparsity=sparsity)
-        
-        # Calculate loss per feature using the updated config
         feature_losses = eval_loss_per_feature(model, config=config)
         
-        # Get feature norms and their indices
         ft_norms = torch.norm(model.W, dim=1)
         _, norm_indices = torch.sort(ft_norms, descending=True)
         
-        # Sort losses according to norm ordering
         sorted_losses = feature_losses[norm_indices]
         
         fig.add_trace(go.Scatter(
@@ -112,8 +87,45 @@ def plot_feature_losses(models, sparsities):
         xaxis_title='Feature Index (sorted by decreasing norm)',
         yaxis_title='Loss per Feature',
         yaxis=dict(
-            type='log'  # Set y-axis to logarithmic scale
+            type='log'
         )
+    )
+    return fig
+
+def compute_active_features_loss(model: Model, config: TrainConfig, threshold: float = 0.8):
+    """Compute average loss of active features (features with norm > threshold)"""
+    ft_norms = torch.norm(model.W, dim=1)
+    feature_losses = eval_loss_per_feature(model, config=config)
+    active_mask = ft_norms > threshold
+    if not torch.any(active_mask):
+        return float('nan')
+    active_losses = feature_losses[active_mask]
+    return active_losses.mean().item()
+
+def plot_active_features_loss(models, sparsities, threshold: float = 0.8):
+    """Plot average loss of active features vs inverse density"""
+    inverse_density = [1/(1-s) for s in sparsities]
+    
+    active_losses = []
+    for sparsity, model in zip(sparsities, models):
+        config = replace(cfg, sparsity=sparsity)
+        avg_loss = compute_active_features_loss(model, config, threshold)
+        active_losses.append(avg_loss)
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=inverse_density,
+        y=active_losses,
+        mode='lines+markers',
+        name='Avg Loss of Active Features'
+    ))
+    
+    fig.update_layout(
+        title=f'Average Loss of Active Features (norm > {threshold}) vs Inverse Density',
+        xaxis_title='Inverse Density (1/1-sparsity)',
+        yaxis_title='Average Loss of Active Features',
+        xaxis=dict(type='log'),
+        yaxis=dict(type='log')
     )
     return fig
 
@@ -126,5 +138,8 @@ fig_dims.show()
 
 fig_losses = plot_feature_losses(models, sparsities)
 fig_losses.show()
+
+fig_active_loss = plot_active_features_loss(models, sparsities)
+fig_active_loss.show()
 
 # %%

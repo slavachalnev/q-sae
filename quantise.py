@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 def quantise_model(model, bits):
     """
@@ -10,19 +11,17 @@ def quantise_model(model, bits):
     
     # Create a copy of the model to avoid modifying the original
     quantized_model = type(model)(model.W.shape[0], model.W.shape[1])
-    quantized_model.W = torch.zeros_like(model.W)
-    quantized_model.b = model.b.clone()  # Copy bias without quantizing
     
     # Process each row independently
     for i in range(model.W.shape[0]):
-        row = model.W[i]
+        row = model.W.data[i]
         
         # Calculate min and max for this row
         row_min = torch.min(row)
         row_max = torch.max(row)
         
         if row_min == row_max:
-            quantized_model.W[i] = row
+            quantized_model.W.data[i] = row
             continue
             
         step_size = (row_max - row_min) / (num_levels - 1)
@@ -30,7 +29,10 @@ def quantise_model(model, bits):
         normalized = (row - row_min) / step_size
         quantized = torch.round(normalized) * step_size + row_min
         
-        quantized_model.W[i] = quantized
+        quantized_model.W.data[i] = quantized
+    
+    # Copy bias without quantizing
+    quantized_model.b.data = model.b.data.clone()
     
     return quantized_model
 
@@ -39,8 +41,10 @@ def quantise_models(models, bits_list):
     quantized_models = []
     
     for model in models:
+        model_variants = []
         for bits in bits_list:
             quantized = quantise_model(model, bits)
-            quantized_models.append(quantized)
+            model_variants.append(quantized)
+        quantized_models.append(model_variants)
             
     return quantized_models

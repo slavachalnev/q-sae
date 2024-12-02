@@ -42,6 +42,14 @@ def dims_per_ft(model: Model):
     """Calculate the ratio of hidden dimensions to the Frobenius norm of W."""
     return model.W.shape[1] / (torch.norm(model.W).item() ** 2)
 
+def dims_per_active_ft(model: Model, threshold: float = 0.8):
+    """Calculate the ratio of hidden dimensions to the number of active features."""
+    ft_norms = torch.norm(model.W, dim=1)
+    active_features = torch.sum(ft_norms > threshold).item()
+    if active_features == 0:
+        return float('nan')
+    return model.W.shape[1] / active_features
+
 def plot_dims_per_ft(models, sparsities):
     dims_per_ft_values = [dims_per_ft(model) for model in models]
     inverse_density = [1/(1-s) for s in sparsities]
@@ -64,6 +72,30 @@ def plot_dims_per_ft(models, sparsities):
     )
     return fig
 
+def plot_dims_per_active_ft(models, sparsities, threshold: float = 0.8):
+    dims_per_active_values = [dims_per_active_ft(model, threshold) for model in models]
+    inverse_density = [1/(1-s) for s in sparsities]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=inverse_density,
+        y=dims_per_active_values,
+        mode='lines+markers',
+        name='Dims per Active Feature'
+    ))
+    
+    fig.update_layout(
+        title=f'Dimensions per Active Feature (norm > {threshold}) vs Inverse Density',
+        xaxis_title='Inverse Density (1/1-sparsity)',
+        yaxis_title='Dimensions per Active Feature',
+        xaxis=dict(
+            type='log',
+        ),
+        yaxis=dict(
+            type='log',
+        )
+    )
+    return fig
 
 def plot_feature_losses(models, sparsities, scale_by_density=False):
     fig = go.Figure()
@@ -158,6 +190,9 @@ fig.show()
 
 fig_dims = plot_dims_per_ft(models, sparsities)
 fig_dims.show()
+
+fig_dims_active = plot_dims_per_active_ft(models, sparsities)
+fig_dims_active.show()
 
 # Plot both regular and density-scaled losses
 fig_losses = plot_feature_losses(models, sparsities, scale_by_density=False)

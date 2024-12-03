@@ -5,9 +5,13 @@ def quantise_model(model, bits):
     """
     Quantize a single model using specified number of bits per weight.
     Each row of model.W is quantized independently. Bias is copied without quantization.
+    
+    Args:
+        model: The model to quantize
+        bits: Number of bits (can be fractional)
     """
-    # Calculate number of levels from bits
-    num_levels = 2 ** bits
+    # Calculate number of levels from bits - use round to handle fractional bits
+    num_levels = round(2 ** bits)
     
     # Create a copy of the model to avoid modifying the original
     quantized_model = type(model)(model.W.shape[0], model.W.shape[1])

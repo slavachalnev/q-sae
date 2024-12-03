@@ -7,6 +7,7 @@ from model import Model
 from dataclasses import dataclass
 from typing import List, Tuple
 import copy
+from tqdm import tqdm
 
 @dataclass
 class TrainConfig:
@@ -26,7 +27,7 @@ def generate_sparse_data(batch_size, input_dim, sparsity, device):
     values = torch.rand(batch_size, input_dim, device=device)
     return values * active_mask
 
-def train_model(config: TrainConfig, silent=False):
+def train_model(config: TrainConfig):
     model = Model(config.input_dim, config.hidden_dim).to(config.device)
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config.learning_rate, 
@@ -36,7 +37,8 @@ def train_model(config: TrainConfig, silent=False):
                                  eta_min=config.min_lr)
     criterion = nn.MSELoss()
 
-    for epoch in range(config.num_epochs):
+    pbar = tqdm(range(config.num_epochs), desc='Training')
+    for epoch in pbar:
         x = generate_sparse_data(config.batch_size, config.input_dim, config.sparsity, config.device)
 
         optimizer.zero_grad()
@@ -46,9 +48,7 @@ def train_model(config: TrainConfig, silent=False):
         optimizer.step()
         scheduler.step()
 
-        if not silent and (epoch + 1) % 100 == 0:
-            current_lr = optimizer.param_groups[0]['lr']
-            print(f'Epoch [{epoch+1}/{config.num_epochs}], Loss: {loss.item():.4f}, LR: {current_lr:.6f}')
+        pbar.set_postfix({'loss': f'{loss.item():.6f}', 'lr': f'{optimizer.param_groups[0]["lr"]:.6f}'})
     return model, loss.item()
 
 
@@ -87,7 +87,7 @@ def train_models_with_sparsities(sparsities: List[float], base_config: TrainConf
         config = copy.copy(base_config)
         config.sparsity = sparsity
 
-        model, final_loss = train_model(config, silent=True)
+        model, final_loss = train_model(config)
         model.to('cpu')
 
         trained_sparsities.append(sparsity)

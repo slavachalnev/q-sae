@@ -12,13 +12,11 @@ from plotly.subplots import make_subplots
 
 # %%
 cfg = TrainConfig(
-    num_epochs=20000, 
+    num_epochs=30000, 
     hidden_dim=64, 
     input_dim=32768,
 )
-# sparsities = [0.99, 0.995, 0.999, 0.9995, 0.9998, 0.9999]
-# sparsities = [0.9, 0.95, 0.99, 0.995, 0.999]
-sparsities = [0.99, 0.999]
+sparsities = [0.95, 0.99, 0.995, 0.999, 0.9995, 0.9998, 0.9999]
 # sparsities = [0.9, 0.99]
 sparsities, models, losses = train_models_with_sparsities(
     sparsities,
@@ -283,19 +281,29 @@ def plot_quantised_feature_losses(quantised_models, sparsities, bits, scale_by_d
 
 # %%
 
-def plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=False):
+def plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=False, only_active=False):
     """Plot overall loss vs inverse density for quantised models"""
     inverse_density = [1/(1-s) for s in sparsities]
     fig = go.Figure()
+    threshold = 0.5  # Threshold for active features
     
     for bit_index, bit in enumerate(bits):
         losses = []
         for sparsity, models_per_bit in zip(sparsities, quantised_models):
             model = models_per_bit[bit_index]
             config = replace(cfg, sparsity=sparsity)
-            loss = torch.mean(eval_loss_per_feature(model, config=config))
+            feature_losses = eval_loss_per_feature(model, config=config)
+            
+            if only_active:
+                ft_norms = torch.norm(model.W, dim=1)
+                active_mask = ft_norms > threshold
+                loss = torch.mean(feature_losses[active_mask])
+            else:
+                loss = torch.mean(feature_losses)
+                
             if scale_by_density:
                 loss = loss * (1 / (1 - sparsity))
+            
             losses.append(loss.item())
             
         fig.add_trace(go.Scatter(
@@ -305,11 +313,19 @@ def plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_den
             name=f'{bit}-bit'
         ))
     
-    title_prefix = 'Density-Scaled ' if scale_by_density else ''
+    # Build title components
+    title_parts = []
+    if scale_by_density:
+        title_parts.append("Density-Scaled")
+    if only_active:
+        title_parts.append("Active Features")
+    title_parts.append("Overall Loss vs Inverse Density")
+    title = " ".join(title_parts) + " (Quantised Models)"
+    
     fig.update_layout(
-        title=f'{title_prefix}Overall Loss vs Inverse Density (Quantised Models)',
+        title=title,
         xaxis_title='Inverse Density (1/1-sparsity)',
-        yaxis_title=f'{title_prefix}Overall Loss',
+        yaxis_title='Overall Loss' if not scale_by_density else 'Density-Scaled Overall Loss',
         xaxis=dict(type='log'),
         yaxis=dict(type='log')
     )
@@ -317,7 +333,7 @@ def plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_den
 
 plot_quantised_feature_losses(quantised_models, sparsities, bits, scale_by_density=False)
 
-# plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=False)
-plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=True)
+plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=True, only_active=False)
+plot_quantised_overall_loss(quantised_models, sparsities, bits, scale_by_density=True, only_active=True)
 
 # %%

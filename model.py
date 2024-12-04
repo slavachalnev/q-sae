@@ -3,13 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Model(nn.Module):
-    def __init__(self, input_dim=256, hidden_dim=64):
+    def __init__(self, input_dim=256, hidden_dim=64, feature_cutoff=None):
         super().__init__()
         W = torch.empty(input_dim, hidden_dim)
         # nn.init.kaiming_uniform_(W, mode='fan_in', nonlinearity='relu')
         nn.init.xavier_uniform_(W)
 
-        W /= W.norm(dim=1, keepdim=True) # Normalise rows
+        W /= W.norm(dim=1, keepdim=True)  # Normalise rows
+        
+        # Set weights to 0 for features beyond the cutoff
+        if feature_cutoff is not None:
+            W[feature_cutoff:, :] = 0.0
 
         self.W = nn.Parameter(W)
         self.b = nn.Parameter(torch.zeros(input_dim))

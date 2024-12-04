@@ -9,7 +9,7 @@ from dataclasses import replace
 import math
 from typing import List
 from plotly.subplots import make_subplots
-
+from utils import plot_dims_per_active_ft
 # %%
 # cfg = TrainConfig(
 #     num_epochs=30000, 
@@ -60,27 +60,6 @@ def dims_per_active_ft(model: Model, threshold: float = 0.5):
         return float('nan')
     return model.W.shape[1] / active_features
 
-def plot_dims_per_ft(models, sparsities):
-    dims_per_ft_values = [dims_per_ft(model) for model in models]
-    inverse_density = [1/(1-s) for s in sparsities]
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=inverse_density,
-        y=dims_per_ft_values,
-        mode='lines+markers',
-        name='Dims per Feature'
-    ))
-    
-    fig.update_layout(
-        title='Dimensions per Feature vs Inverse Density (1/1-sparsity)',
-        xaxis_title='Inverse Density (1/1-sparsity)',
-        yaxis_title='Dimensions per Feature',
-        xaxis=dict(
-            type='log',
-        )
-    )
-    return fig
 
 def plot_dims_per_active_ft(models, sparsities, threshold: float = 0.5):
     dims_per_active_values = [dims_per_active_ft(model, threshold) for model in models]
@@ -102,6 +81,29 @@ def plot_dims_per_active_ft(models, sparsities, threshold: float = 0.5):
             type='log',
         ),
         yaxis=dict(
+            type='log',
+        )
+    )
+    return fig
+
+
+def plot_dims_per_ft(models, sparsities):
+    dims_per_ft_values = [dims_per_ft(model) for model in models]
+    inverse_density = [1/(1-s) for s in sparsities]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=inverse_density,
+        y=dims_per_ft_values,
+        mode='lines+markers',
+        name='Dims per Feature'
+    ))
+    
+    fig.update_layout(
+        title='Dimensions per Feature vs Inverse Density (1/1-sparsity)',
+        xaxis_title='Inverse Density (1/1-sparsity)',
+        yaxis_title='Dimensions per Feature',
+        xaxis=dict(
             type='log',
         )
     )

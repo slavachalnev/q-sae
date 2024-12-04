@@ -30,7 +30,7 @@ class TrainConfig:
     # Sparsity configuration
     use_exponential_decay: bool = False  # whether to use exponential decay for feature probabilities
     sparsity: float = 0.9  # used when use_exponential_decay=False
-    initial_prob: float = 0.1  # probability of first feature being active when using decay
+    initial_prob: float = 0.01  # probability of first feature being active when using decay
     decay_rate: float = 0.002    # controls how quickly probabilities decay
     feature_cutoff: int = None  # if set, features beyond this index have 0 probability
 
@@ -62,7 +62,8 @@ def generate_sparse_data(batch_size: int, config: TrainConfig) -> torch.Tensor:
     return values * active_mask
 
 def train_model(config: TrainConfig):
-    model = Model(config.input_dim, config.hidden_dim).to(config.device)
+    model = Model(config.input_dim, config.hidden_dim, 
+                 feature_cutoff=config.feature_cutoff).to(config.device)
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config.learning_rate, 
                            weight_decay=config.weight_decay)
@@ -141,8 +142,9 @@ def load_trained_model(config: TrainConfig) -> Tuple[Model, float]:
     if not model_dir.exists():
         return None, None
     
-    # Load model
-    model = Model(config.input_dim, config.hidden_dim)
+    # Load model with feature_cutoff parameter
+    model = Model(config.input_dim, config.hidden_dim, 
+                 feature_cutoff=config.feature_cutoff)
     model.load_state_dict(torch.load(model_dir / "model.pt"))
     
     # Load config and get final loss

@@ -1,7 +1,7 @@
 # %%
 import torch
 import plotly.graph_objects as go
-from train import train_models_with_sparsities, TrainConfig, Model, eval_loss_per_feature
+from train import train_model_variations, TrainConfig, Model, eval_loss_per_feature
 from quantise import quantise_models
 import numpy as np
 import torch.nn.functional as F
@@ -11,16 +11,22 @@ from typing import List
 from plotly.subplots import make_subplots
 
 # %%
+# cfg = TrainConfig(
+#     num_epochs=30000, 
+#     hidden_dim=64, 
+#     input_dim=32768,
+# )
+# sparsities = [0.95, 0.99, 0.995, 0.999, 0.9995, 0.9998, 0.9999]
+
 cfg = TrainConfig(
-    num_epochs=30000, 
-    hidden_dim=64, 
-    input_dim=32768,
+    num_epochs=300, 
+    hidden_dim=32, 
+    input_dim=8192,
 )
-sparsities = [0.95, 0.99, 0.995, 0.999, 0.9995, 0.9998, 0.9999]
-# sparsities = [0.9, 0.99]
-sparsities, models, losses = train_models_with_sparsities(
-    sparsities,
+sparsities = [0.9, 0.99]
+sparsities, models, losses = train_model_variations(
     base_config=cfg,
+    sparsities=sparsities,
 )
 
 # %%

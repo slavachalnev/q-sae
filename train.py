@@ -22,16 +22,43 @@ class TrainConfig:
     hidden_dim: int = 32
     batch_size: int = 8192
     num_epochs: int = 10000
-    sparsity: float = 0.9
     learning_rate: float = 2e-3
     weight_decay: float = 0.01
     min_lr: float = 1e-6  # Minimum learning rate for cosine decay
     device: torch.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def generate_sparse_data(batch_size, input_dim, sparsity, device):
-    """Generate synthetic sparse data where active features are uniform[0,1]."""
-    active_mask = (torch.rand(batch_size, input_dim, device=device) > sparsity).float()
-    values = torch.rand(batch_size, input_dim, device=device)
+    # Sparsity configuration
+    use_exponential_decay: bool = False  # whether to use exponential decay for feature probabilities
+    sparsity: float = 0.9  # used when use_exponential_decay=False
+    initial_prob: float = 0.1  # probability of first feature being active when using decay
+    decay_rate: float = 0.002    # controls how quickly probabilities decay
+    feature_cutoff: int = None  # if set, features beyond this index have 0 probability
+
+
+def generate_sparse_data(batch_size: int, config: TrainConfig) -> torch.Tensor:
+    """Generate synthetic sparse data where active features are uniform[0,1].
+    
+    Args:
+        batch_size: Number of samples to generate
+        config: TrainConfig object containing all necessary parameters
+    """
+    if not config.use_exponential_decay:
+        # Uniform sparsity
+        active_mask = (torch.rand(batch_size, config.input_dim, device=config.device) > config.sparsity).float()
+    else:
+        # Exponentially decaying activation probabilities
+        probs = config.initial_prob * torch.exp(-torch.arange(config.input_dim, device=config.device) * config.decay_rate)
+        
+        # Apply cutoff if specified
+        if config.feature_cutoff is not None:
+            probs[config.feature_cutoff:] = 0.0
+            
+        # Broadcast probabilities to batch size
+        probs = probs.expand(batch_size, -1)
+        # Generate active mask using the varying probabilities
+        active_mask = (torch.rand(batch_size, config.input_dim, device=config.device) < probs).float()
+    
+    values = torch.rand(batch_size, config.input_dim, device=config.device)
     return values * active_mask
 
 def train_model(config: TrainConfig):
@@ -46,7 +73,7 @@ def train_model(config: TrainConfig):
 
     pbar = tqdm(range(config.num_epochs), desc='Training')
     for epoch in pbar:
-        x = generate_sparse_data(config.batch_size, config.input_dim, config.sparsity, config.device)
+        x = generate_sparse_data(config.batch_size, config)
 
         optimizer.zero_grad()
         output = model(x)
@@ -69,7 +96,7 @@ def eval_loss_per_feature(model: Model, config: TrainConfig, num_batches: int = 
     
     # Evaluate over multiple batches
     for _ in range(num_batches):
-        x = generate_sparse_data(config.batch_size, config.input_dim, config.sparsity, config.device)
+        x = generate_sparse_data(config.batch_size, config)
         output = model(x)
         loss = ((output - x) ** 2).mean(dim=0)
         total_loss += loss
@@ -125,51 +152,83 @@ def load_trained_model(config: TrainConfig) -> Tuple[Model, float]:
     return model, saved_config['final_loss']
 
 # Modify the train_models_with_sparsities function
-def train_models_with_sparsities(sparsities: List[float], base_config: TrainConfig):
-    if base_config is None:
-        base_config = TrainConfig()
+def train_model_variations(base_config: TrainConfig, sparsities: List[float] = None, cutoffs: List[int] = None):
+    """Train models with different sparsities or feature cutoffs.
     
-    trained_sparsities = []
+    Args:
+        base_config: Base configuration to use
+        sparsities: List of sparsity values to train with, or None
+        feature_cutoffs: List of feature cutoff values to train with, or None
+    
+    Returns:
+        Tuple of (variation_values, trained_models, final_losses) where variation_values
+        are either sparsities or cutoffs depending on which was specified
+    """
+    if sparsities is None and cutoffs is None:
+        raise ValueError("Must specify either sparsities or cutoffs")
+    if sparsities is not None and cutoffs is not None:
+        raise ValueError("Cannot specify both sparsities and cutoffs")
+        
+    variations = sparsities if sparsities is not None else cutoffs
+    trained_variations = []
     trained_models = []
     final_losses = []
     
-    for sparsity in sparsities:
+    for value in variations:
         config = copy.copy(base_config)
-        config.sparsity = sparsity
+        if sparsities is not None:
+            config.sparsity = value
+            variation_name = f"sparsity {value}"
+        else:
+            config.feature_cutoff = value
+            config.use_exponential_decay = True  # Feature cutoffs only make sense with exponential decay
+            variation_name = f"cutoff {value}"
         
         # Try to load existing model
         model, final_loss = load_trained_model(config)
         
         if model is not None:
-            print(f"Loading existing model for sparsity {sparsity}, final loss: {final_loss:.6f}")
+            print(f"Loading existing model for {variation_name}, final loss: {final_loss:.6f}")
         else:
             model, final_loss = train_model(config)
             model.to('cpu')
-            print(f"Training new model for sparsity {sparsity}, final loss: {final_loss:.6f}")
+            print(f"Training new model for {variation_name}, final loss: {final_loss:.6f}")
             # Save the trained model
             save_trained_model(model, config, final_loss)
 
-        trained_sparsities.append(sparsity)
+        trained_variations.append(value)
         trained_models.append(model)
         final_losses.append(final_loss)
         
-        print(f"Completed processing for sparsity {sparsity}, final loss: {final_loss:.6f}")
+        print(f"Completed processing for {variation_name}, final loss: {final_loss:.6f}")
     
-    return trained_sparsities, trained_models, final_losses
+    return trained_variations, trained_models, final_losses
 
+# Update the main block to show both usage patterns
 if __name__ == "__main__":
-    # Example usage with multiple sparsity levels
-    sparsities = [0.5, 0.7, 0.9, 0.95, 0.99]
     base_config = TrainConfig(
         num_epochs=500,
         weight_decay=0.01
     )
-    
     print(f"Using device: {base_config.device}")
-    sparsities, models, losses = train_models_with_sparsities(sparsities, base_config)
     
-    # Print summary of results
-    print("\nTraining Results Summary:")
-    for sparsity, loss in zip(sparsities, losses):
-        print(f"Sparsity: {sparsity}, Final Loss: {loss:.6f}")
+    # Example 1: Training with different sparsities
+    print("\nTraining models with different sparsities:")
+    sparsities = [0.5, 0.7, 0.9, 0.95, 0.99]
+    variations, models, losses = train_model_variations(base_config, sparsities=sparsities)
+    print("\nSparsity Training Results Summary:")
+    for var, loss in zip(variations, losses):
+        print(f"Sparsity: {var}, Final Loss: {loss:.6f}")
+    
+    # Example 2: Training with different feature cutoffs
+    print("\nTraining models with different feature cutoffs:")
+    cutoffs = [512, 1024, 1536, 2048]
+    base_config_cutoffs = copy.copy(base_config)
+    base_config_cutoffs.use_exponential_decay = True
+    base_config_cutoffs.initial_prob = 0.1
+    base_config_cutoffs.decay_rate = 0.002
+    variations, models, losses = train_model_variations(base_config_cutoffs, feature_cutoffs=cutoffs)
+    print("\nFeature Cutoff Training Results Summary:")
+    for var, loss in zip(variations, losses):
+        print(f"Feature Cutoff: {var}, Final Loss: {loss:.6f}")
     
